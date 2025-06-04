@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>點名系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .name-button {
+            transition: all 0.15s ease-out;
+            position: relative;
+        }
+        .name-button.pressed {
+            background-color: #4ade80;
+            color: white;
+            border-color: #22c55e;
+        }
+        .name-button.pressed:hover {
+            background-color: #ef4444;
+            border-color: #dc2626;
+        }
+        .pagination-button:disabled { opacity: 0.6; cursor: not-allowed; background-color: #9ca3af; }
+        .delete-icon {
+            position: absolute; top: -8px; right: -8px; width: 20px; height: 20px;
+            background-color: red; color: white; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; font-weight: bold; cursor: pointer;
+            border: 1px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.3); z-index: 10;
+        }
+        .delete-icon:hover { background-color: darkred; }
+        .modal { transition: opacity 0.25s ease; }
+        .modal-content { transition: transform 0.25s ease; }
+        .delete-history-btn {
+            background-color: #ef4444; /* red-500 */
+            color: white;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem; /* text-xs */
+            border-radius: 0.375rem; /* rounded-md */
+            transition: background-color 0.15s ease;
+        }
+        .delete-history-btn:hover {
+            background-color: #dc2626; /* red-600 */
+        }
+        .enable-delete-mode-btn {
+            padding: 0.25rem 0.75rem;
+            font-size: 0.875rem;
+            border-radius: 0.375rem;
+            transition: background-color 0.15s ease;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-sky-500 via-indigo-500 to-purple-600 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-xl">
+        <h1 class="text-3xl sm:text-4xl font-bold text-center text-gray-800 mb-2">點名系統</h1>
+        <p id="currentDateDisplay" class="text-center text-gray-500 text-sm mb-2"></p>
+        <div class="my-4 flex gap-2">
+            <input type="text" id="newNameInput" placeholder="輸入新姓名" class="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            <button id="addNameButton" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md">新增此人</button>
+        </div>
+        <p id="countDisplay" class="text-center text-gray-600 mb-4 sm:mb-6 text-lg">已點名人數：0 / 0</p>
+        <div id="nameButtonsContainer" class="grid grid-cols-4 gap-3 sm:gap-4 mb-4 p-2 border rounded-lg min-h-[280px]"></div>
+        <div id="paginationControls" class="flex justify-between items-center mb-6 sm:mb-8">
+            <button id="prevPageButton" class="pagination-button bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md">上一頁</button>
+            <span id="pageInfo" class="text-gray-700">頁碼 1 / 1</span>
+            <button id="nextPageButton" class="pagination-button bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md">下一頁</button>
+        </div>
+        <div class="space-y-3 sm:space-y-4">
+            <button id="saveRecordButton" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md">儲存本次紀錄</button>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <button id="toggleDeleteModeButton" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md">切換刪除模式</button>
+                <button id="viewHistoryButton" class="w-full bg-teal-500 hover:bg-teal-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md">查看歷史紀錄</button>
+            </div>
+        </div>
+        <div id="messageBox" class="fixed bottom-5 right-5 bg-green-500 text-white p-3 rounded-lg shadow-lg hidden animate-pulse z-50">訊息提示</div>
+    </div>
+
+    <!-- 歷史紀錄 Modal -->
+    <div id="historyModal" class="modal fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full hidden flex items-center justify-center z-50 p-4 opacity-0">
+        <div class="modal-content bg-white p-5 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto transform scale-95">
+            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                <h2 class="text-2xl font-semibold text-gray-700">點名歷史紀錄</h2>
+                <div class="flex items-center space-x-2">
+                    <button id="enableHistoryDeleteModeButton" class="enable-delete-mode-btn bg-orange-500 hover:bg-orange-600 text-white">啟用紀錄刪除</button>
+                    <button id="closeHistoryModal" class="text-gray-500 hover:text-red-600 text-3xl font-bold">&times;</button>
+                </div>
+            </div>
+            <div id="historyPasswordSection" class="hidden my-3 p-3 bg-gray-100 border rounded-md">
+                <p id="historyPasswordMessage" class="text-sm text-gray-700 mb-2">請輸入密碼以啟用紀錄刪除功能：</p>
+                <input type="password" id="historyPasswordInput" class="w-full p-2 border border-gray-300 rounded-md" placeholder="church phone number">
+                <div class="mt-2 flex justify-end space-x-2">
+                    <button id="historyPasswordCancel" class="bg-gray-200 hover:bg-gray-300 text-gray-700 py-1 px-3 rounded-md text-sm">取消</button>
+                    <button id="historyPasswordConfirm" class="bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-md text-sm">確認</button>
+                </div>
+            </div>
+            <div class="mb-4 p-3 bg-gray-50 rounded-md border">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="historyDateFilter" class="block text-sm font-medium text-gray-700 mb-1">篩選日期：</label>
+                        <input type="date" id="historyDateFilter" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label for="historyNameFilter" class="block text-sm font-medium text-gray-700 mb-1">搜尋已點名單：</label>
+                        <input type="text" id="historyNameFilter" placeholder="輸入姓名關鍵字" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                </div>
+                <button id="clearHistoryFiltersButton" class="mt-3 w-full sm:w-auto bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-sm">清除篩選</button>
+            </div>
+            <div id="historyRecordsContainer" class="space-y-4">
+                <p class="text-gray-500 text-center">正在載入歷史紀錄...</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 移除了 Firebase SDK imports
+
+        let names = [];
+        const textFileData = `
+鄧明輝
+吳麗妁
+鄧佳欣
+鄧佳怡
+鄧佳蕙
+張秋梅
+鄧忠和
+鄧嘉俐
+鄧曉朋
+鄧麗瓊
+鄧清潭
+王菊妹
+莊洪鵬
+鄧素華
+莊信宏
+吳氐馬林
+鄧榮超
+陳美君
+鄧永信
+鄧永晴
+鄧櫻瑜
+劉麗雪
+陳英芬
+蘇堯秋
+蘇柏昕
+黃肅分
+蘇米恩
+胡振雄
+胡恩欣
+胡藍文
+林金城
+曾微如
+林建志
+林昭城
+伍美玉
+林育聖
+林婉婷
+林婉君
+楊淑梅
+林盟豐
+郭書榕
+林妤璇
+林宸濬
+黃順吉
+黃順來
+許美玉
+黃俊龍
+陳美紅
+黃登楷
+黃舒蔓
+黃俊儒
+張瓊方
+黃詩惇
+蔡清輝
+潘秀花
+蔡明魁
+孫雅惠
+郭葮戌
+陳登瑞
+張寶蓉
+陳予薇
+陳冠庭
+陳月香
+陳仲箎
+郭慈華
+陳首欣
+陳毅哲
+陳淑君
+陳嘉宏
+鍾桂美
+楊恆偉
+黃莉方
+楊淑萍
+陳寶葉
+楊秀美
+楊秀雯
+楊嘉恩
+曾玉滿
+郭賢文
+郭瑞華
+郭春華
+蘇博賢
+陳慶昌
+陳越芳
+陳慶村
+陳文宗
+陳舜爵
+陳舜堯
+陳惠美
+陳頌明
+陳瑞典
+蔡文宗
+林靜芬
+蔡東牧
+陳美玉
+倪瓊州
+陳桂蘭
+倪瓊梅
+倪啟瑞
+黃麗華
+倪信章
+黃耀聰
+簡阿美
+黃建敦
+潘雅芳
+黃乙平
+張宥葳
+黃吉助
+向秀月
+黃如敏
+陳天枝
+汪嬌
+陳靜香
+陳慶龍
+陳靜娟
+陳慶發
+羅慶昇
+羅春里
+羅春杰
+羅春成
+郭雅玲
+羅廷洋
+羅廷郁
+羅振立
+賴孟君
+林光輝
+葉淑婉
+林宜樺
+林家億
+張學禮
+鍾妙芳
+張瓊文
+張逸琳
+張銜恆
+洪德昌
+施玉品
+洪士勛
+洪以真
+郭秀分
+林洋德
+郭秀麗
+林喆歆
+郭恩歆
+林昱歆
+翁倩慧
+鄭昆杰
+鄭宇軒
+鄭宇君
+陳明寶
+楊瓊琚
+商怡雯
+陳彥志
+陳彥如
+沙商聖涓
+蘇炳榮
+劉淑惠
+蘇曉彤
+楊秀娟
+王世鵬
+楊貴貞
+王宜宣
+吳惠美
+龔慰慈
+蔡光輝
+蔡明賓
+蔡佩馨
+蔡靜雯
+張彩蓉
+黃雅玲
+郭宜靜
+楊媛淇
+鍾珠玉
+郭敏如
+劉羅以
+蔡沁驛
+張採築
+`.trim();
+        function parseTextFile(textString) { return textString.split('\n').map(line => line.trim()).filter(line => line); }
+        names = parseTextFile(textFileData);
+
+        const nameButtonsContainer = document.getElementById('nameButtonsContainer');
+        const saveRecordButton = document.getElementById('saveRecordButton'); // 改名
+        const viewHistoryButton = document.getElementById('viewHistoryButton');
+        const countDisplay = document.getElementById('countDisplay');
+        const messageBox = document.getElementById('messageBox');
+        const currentDateDisplay = document.getElementById('currentDateDisplay');
+        const prevPageButton = document.getElementById('prevPageButton');
+        const nextPageButton = document.getElementById('nextPageButton');
+        const pageInfo = document.getElementById('pageInfo');
+        const newNameInput = document.getElementById('newNameInput');
+        const addNameButton = document.getElementById('addNameButton');
+        const toggleDeleteModeButton = document.getElementById('toggleDeleteModeButton');
+        const historyModal = document.getElementById('historyModal');
+        const closeHistoryModalButton = document.getElementById('closeHistoryModal');
+        const historyRecordsContainer = document.getElementById('historyRecordsContainer');
+        const historyDateFilter = document.getElementById('historyDateFilter');
+        const historyNameFilter = document.getElementById('historyNameFilter');
+        const clearHistoryFiltersButton = document.getElementById('clearHistoryFiltersButton');
+        const enableHistoryDeleteModeButton = document.getElementById('enableHistoryDeleteModeButton');
+        const historyPasswordSection = document.getElementById('historyPasswordSection');
+        const historyPasswordInput = document.getElementById('historyPasswordInput');
+        const historyPasswordConfirm = document.getElementById('historyPasswordConfirm');
+        const historyPasswordCancel = document.getElementById('historyPasswordCancel');
+
+        let pressedCount = 0, totalNames = names.length, nameStates = {}, itemsPerPage = 28, currentPage = 1, totalPages = Math.ceil(totalNames / itemsPerPage) || 1, deleteMode = false;
+        let allHistoryRecords = []; 
+        let historyDeleteModeActive = false; 
+
+        // Firebase 相關按鈕現在預設可用，因為不再依賴 Firebase 初始化
+        // if (saveRecordButton) saveRecordButton.disabled = true; 
+        // if (viewHistoryButton) viewHistoryButton.disabled = true;
+
+        function initializeNameStates() {
+            const newNameStates = {};
+            names.forEach(name => { newNameStates[name] = nameStates[name] !== undefined ? nameStates[name] : false; });
+            nameStates = newNameStates;
+            pressedCount = Object.values(nameStates).filter(state => state === true).length;
+        }
+
+        function updateSystemState() {
+            totalNames = names.length;
+            totalPages = Math.ceil(totalNames / itemsPerPage) || 1;
+            if (currentPage > totalPages && totalPages > 0) currentPage = totalPages;
+            else if (totalPages === 0) currentPage = 1;
+            initializeNameStates(); updateCountDisplay(); displayPage(currentPage);
+        }
+
+        function updateDateDisplay() {
+            const now = new Date();
+            currentDateDisplay.textContent = `${now.getFullYear()}年${(now.getMonth() + 1).toString().padStart(2, '0')}月${now.getDate().toString().padStart(2, '0')}日 星期${["日", "一", "二", "三", "四", "五", "六"][now.getDay()]}`;
+        }
+        function updateCountDisplay() { countDisplay.textContent = `已點名人數：${pressedCount} / ${totalNames}`; }
+        function showMessage(message, type = 'success') {
+            messageBox.textContent = message;
+            messageBox.classList.remove('hidden', 'bg-green-500', 'bg-red-500', 'bg-yellow-600', 'bg-indigo-500');
+            if (type === 'success') messageBox.classList.add('bg-green-500');
+            else if (type === 'error') messageBox.classList.add('bg-red-500');
+            else if (type === 'warning') messageBox.classList.add('bg-yellow-600');
+            else if (type === 'info') messageBox.classList.add('bg-indigo-500');
+            messageBox.classList.remove('animate-pulse'); void messageBox.offsetWidth; messageBox.classList.add('animate-pulse');
+            setTimeout(() => messageBox.classList.add('hidden'), 3000);
+        }
+
+        function displayPage(page) {
+            nameButtonsContainer.innerHTML = ''; currentPage = page;
+            if (totalNames === 0) {
+                nameButtonsContainer.innerHTML = '<p class="col-span-full text-center text-gray-500">沒有載入任何名字。</p>';
+                pageInfo.textContent = '頁碼 0 / 0'; prevPageButton.disabled = true; nextPageButton.disabled = true; return;
+            }
+            const startIndex = (page - 1) * itemsPerPage;
+            for (let i = 0; i < itemsPerPage; i++) {
+                const nameIndex = startIndex + i;
+                if (nameIndex < totalNames) {
+                    const name = names[nameIndex];
+                    const btnWrapper = document.createElement('div'); btnWrapper.classList.add('relative');
+                    const btn = document.createElement('button'); btn.textContent = name;
+                    let classes = ['name-button', 'w-full', 'h-9', 'text-white', 'font-medium', 'py-2', 'px-3', 'text-sm', 'truncate', 'rounded-lg', 'shadow', 'focus:outline-none', 'focus:ring-2', 'focus:ring-opacity-75', 'flex', 'items-center', 'justify-center'];
+                    if (nameStates[name]) classes.push('pressed'); else classes.push('bg-blue-500', 'hover:bg-blue-600', 'focus:ring-blue-400');
+                    btn.classList.add(...classes); btn.dataset.name = name; btn.title = name;
+                    btn.addEventListener('click', function() {
+                        if (deleteMode) return;
+                        if (nameStates[name]) {
+                            this.classList.remove('pressed'); this.classList.add('bg-blue-500', 'hover:bg-blue-600', 'focus:ring-blue-400');
+                            nameStates[name] = false; pressedCount--;
+                        } else {
+                            this.classList.add('pressed'); this.classList.remove('bg-blue-500', 'hover:bg-blue-600', 'focus:ring-blue-400');
+                            nameStates[name] = true; pressedCount++;
+                        }
+                        updateCountDisplay();
+                    });
+                    btnWrapper.appendChild(btn);
+                    if (deleteMode) {
+                        const delIcon = document.createElement('span'); delIcon.textContent = 'X';
+                        delIcon.classList.add('delete-icon'); delIcon.title = `刪除 ${name}`;
+                        delIcon.addEventListener('click', (e) => { e.stopPropagation(); handleDeleteName(name); });
+                        btnWrapper.appendChild(delIcon);
+                    }
+                    nameButtonsContainer.appendChild(btnWrapper);
+                } else {
+                    const ph = document.createElement('div'); ph.classList.add('h-9', 'w-full', 'rounded-lg');
+                    nameButtonsContainer.appendChild(ph);
+                }
+            }
+            pageInfo.textContent = `頁碼 ${currentPage} / ${totalPages}`;
+            prevPageButton.disabled = currentPage === 1;
+            nextPageButton.disabled = currentPage === totalPages || totalPages === 0;
+        }
+        
+        function handleAddName() {
+            const newName = newNameInput.value.trim();
+            if (!newName) { showMessage("請輸入姓名！", "error"); return; }
+            names.push(newName); newNameInput.value = '';
+            currentPage = Math.ceil(names.length / itemsPerPage); 
+            updateSystemState(); showMessage(`"${newName}" 已成功新增！`, "success");
+        }
+
+        function handleDeleteName(nameToDelete) {
+            const idx = names.indexOf(nameToDelete);
+            if (idx > -1) {
+                names.splice(idx, 1); if (nameStates[nameToDelete]) pressedCount--; delete nameStates[nameToDelete];
+                updateSystemState(); showMessage(`"${nameToDelete}" 已刪除。`, "success");
+            }
+        }
+
+        function saveRecordToLocalStorage() {
+            if (totalNames === 0) { showMessage("名單是空的，無法儲存。", "error"); return; }
+            
+            const presentNamesList = names.filter(name => nameStates[name]);
+            const newRecord = {
+                id: Date.now().toString(), // 使用時間戳作為唯一ID
+                timestamp: new Date().toISOString(), // ISO 格式時間戳
+                dateString: currentDateDisplay.textContent,
+                totalPresent: pressedCount,
+                totalNamesInList: totalNames,
+                presentNames: JSON.stringify(presentNamesList)
+            };
+
+            try {
+                let history = JSON.parse(localStorage.getItem('rollCallHistory')) || [];
+                history.unshift(newRecord); // 新紀錄加到最前面
+                localStorage.setItem('rollCallHistory', JSON.stringify(history));
+                
+                showMessage("紀錄已儲存到瀏覽器！", "success"); 
+
+                Object.keys(nameStates).forEach(name => nameStates[name] = false);
+                pressedCount = 0;
+                const buttons = nameButtonsContainer.querySelectorAll('.name-button');
+                buttons.forEach(button => {
+                    button.classList.remove('pressed');
+                    if (!button.classList.contains('bg-blue-500')) { 
+                        button.classList.add('bg-blue-500', 'hover:bg-blue-600', 'focus:ring-blue-400');
+                    }
+                });
+                updateCountDisplay(); 
+                currentPage = 1;
+                displayPage(currentPage);
+            } catch (e) { 
+                showMessage("儲存紀錄失敗：" + e.message, "error"); 
+                console.error("Error saving to localStorage: ", e);
+            }
+        }
+        
+        function convertChineseDateToISO(chineseDate) {
+            if (!chineseDate || typeof chineseDate !== 'string') return null;
+            const match = chineseDate.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+            if (match) {
+                return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+            }
+            return null;
+        }
+
+        function deleteHistoryRecordFromLocalStorage(recordId) {
+            try {
+                let history = JSON.parse(localStorage.getItem('rollCallHistory')) || [];
+                history = history.filter(record => record.id !== recordId);
+                localStorage.setItem('rollCallHistory', JSON.stringify(history));
+                
+                showMessage("歷史紀錄已成功刪除。", "success");
+                allHistoryRecords = history; // 更新本地緩存
+                renderFilteredHistory();
+            } catch (e) {
+                console.error("Error deleting history record from localStorage: ", e);
+                showMessage("刪除歷史紀錄失敗：" + e.message, "error");
+            }
+        }
+
+        function renderFilteredHistory() {
+            const filterDate = historyDateFilter.value; 
+            const filterName = historyNameFilter.value.trim().toLowerCase();
+            
+            let filteredRecords = allHistoryRecords; // 使用從 localStorage 載入的 allHistoryRecords
+
+            if (filterDate) {
+                filteredRecords = filteredRecords.filter(record => {
+                    const recordIsoDate = convertChineseDateToISO(record.dateString); 
+                    return recordIsoDate === filterDate;
+                });
+            }
+
+            if (filterName) {
+                filteredRecords = filteredRecords.filter(record => {
+                    const presentNamesArray = JSON.parse(record.presentNames || "[]"); 
+                    return presentNamesArray.some(name => name.toLowerCase().includes(filterName));
+                });
+            }
+
+            if (filteredRecords.length === 0) {
+                historyRecordsContainer.innerHTML = '<p class="text-gray-500 text-center">沒有符合篩選條件的紀錄。</p>';
+                return;
+            }
+
+            let recordsHtml = '';
+            filteredRecords.forEach((record) => { 
+                const presentNamesArray = JSON.parse(record.presentNames || "[]");
+                let namesListHtml = presentNamesArray.length > 0 ? presentNamesArray.map(name => `<li class="text-sm text-gray-600">${name}</li>`).join('') : '<li>無人點名</li>';
+                
+                let deleteButtonHtml = '';
+                if (historyDeleteModeActive) { 
+                    deleteButtonHtml = `<button class="delete-history-btn ml-2" data-record-id="${record.id}">刪除此紀錄</button>`;
+                }
+
+                recordsHtml += `
+                    <div class="border-b border-gray-200 pb-3 mb-3">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="font-semibold text-gray-700">日期：${record.dateString}</p>
+                                <p class="text-sm text-gray-600">點名人數：${record.totalPresent} / ${record.totalNamesInList}</p>
+                            </div>
+                            ${deleteButtonHtml} 
+                        </div>
+                        <details class="mt-1">
+                            <summary class="cursor-pointer text-blue-600 hover:text-blue-800 text-sm">查看名單</summary>
+                            <ul class="list-disc list-inside pl-5 mt-1">${namesListHtml}</ul>
+                        </details>
+                    </div>`;
+            });
+            historyRecordsContainer.innerHTML = recordsHtml;
+
+            if (historyDeleteModeActive) { 
+                historyRecordsContainer.querySelectorAll('.delete-history-btn').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const recordId = this.dataset.recordId;
+                        deleteHistoryRecordFromLocalStorage(recordId);
+                    });
+                });
+            }
+        }
+
+        function loadHistoryFromLocalStorage() { 
+            historyRecordsContainer.innerHTML = '<p class="text-gray-500 text-center">正在載入歷史紀錄...</p>';
+            try {
+                const history = JSON.parse(localStorage.getItem('rollCallHistory')) || [];
+                // localStorage 中的紀錄可能沒有按時間戳排序，如果需要，可以在這裡排序
+                // 不過由於我們儲存時是 unshift，理論上較新的會在前面
+                allHistoryRecords = history; 
+                renderFilteredHistory(); 
+            } catch (e) {
+                console.error("Error loading history from localStorage: ", e);
+                historyRecordsContainer.innerHTML = `<p class="text-red-500 text-center">讀取歷史紀錄失敗：${e.message}</p>`;
+                allHistoryRecords = []; 
+            }
+        }
+
+        function initializeSystem() {
+            updateDateDisplay(); totalNames = names.length;
+            totalPages = Math.ceil(totalNames / itemsPerPage) || 1;
+            initializeNameStates(); displayPage(1); updateCountDisplay();
+        }
+
+        addNameButton.addEventListener('click', handleAddName);
+        newNameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleAddName(); });
+        toggleDeleteModeButton.addEventListener('click', function() {
+            deleteMode = !deleteMode; this.textContent = deleteMode ? "退出刪除模式" : "切換刪除模式";
+            this.classList.toggle('bg-yellow-500', !deleteMode); this.classList.toggle('hover:bg-yellow-600', !deleteMode);
+            this.classList.toggle('bg-purple-500', deleteMode); this.classList.toggle('hover:bg-purple-600', deleteMode);
+            displayPage(currentPage); showMessage(deleteMode ? "刪除模式已啟用" : "刪除模式已關閉", "warning");
+        });
+        
+        // 將 saveToDbButton 改為 saveRecordButton
+        if (saveRecordButton) saveRecordButton.addEventListener('click', saveRecordToLocalStorage);
+        
+        if (viewHistoryButton) {
+            viewHistoryButton.addEventListener('click', () => {
+                historyModal.classList.remove('hidden', 'opacity-0');
+                historyModal.querySelector('.modal-content').classList.remove('scale-95');
+                historyModal.classList.add('opacity-100');
+                historyModal.querySelector('.modal-content').classList.add('scale-100');
+                historyDateFilter.value = '';
+                historyNameFilter.value = '';
+                if (historyDeleteModeActive) { 
+                    historyDeleteModeActive = false;
+                    enableHistoryDeleteModeButton.textContent = '啟用紀錄刪除';
+                    enableHistoryDeleteModeButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+                    enableHistoryDeleteModeButton.classList.add('bg-orange-500', 'hover:bg-orange-600');
+                }
+                historyPasswordSection.classList.add('hidden'); 
+                loadHistoryFromLocalStorage(); 
+            });
+        }
+        if (closeHistoryModalButton) {
+            closeHistoryModalButton.addEventListener('click', () => {
+                historyModal.classList.add('opacity-0');
+                historyModal.querySelector('.modal-content').classList.add('scale-95');
+                if (historyDeleteModeActive) { 
+                    historyDeleteModeActive = false;
+                    enableHistoryDeleteModeButton.textContent = '啟用紀錄刪除';
+                    enableHistoryDeleteModeButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+                    enableHistoryDeleteModeButton.classList.add('bg-orange-500', 'hover:bg-orange-600');
+                }
+                historyPasswordSection.classList.add('hidden'); 
+                setTimeout(() => {
+                    historyModal.classList.add('hidden');
+                    historyModal.querySelector('.modal-content').classList.remove('scale-100'); 
+                }, 250); 
+            });
+        }
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !historyModal.classList.contains('hidden')) {
+                closeHistoryModalButton.click();
+            }
+        });
+
+        if (historyDateFilter) historyDateFilter.addEventListener('input', renderFilteredHistory);
+        if (historyNameFilter) historyNameFilter.addEventListener('input', renderFilteredHistory);
+        if (clearHistoryFiltersButton) {
+            clearHistoryFiltersButton.addEventListener('click', () => {
+                historyDateFilter.value = '';
+                historyNameFilter.value = '';
+                renderFilteredHistory(); 
+            });
+        }
+
+        if (enableHistoryDeleteModeButton) {
+            enableHistoryDeleteModeButton.addEventListener('click', function() {
+                if (historyDeleteModeActive) { 
+                    historyDeleteModeActive = false;
+                    this.textContent = '啟用紀錄刪除';
+                    this.classList.remove('bg-red-600', 'hover:bg-red-700');
+                    this.classList.add('bg-orange-500', 'hover:bg-orange-600');
+                    historyPasswordSection.classList.add('hidden'); 
+                    showMessage("已退出紀錄刪除模式。", "info");
+                } else { 
+                    historyPasswordSection.classList.remove('hidden');
+                    historyPasswordInput.value = '';
+                    historyPasswordInput.focus();
+                }
+                renderFilteredHistory(); 
+            });
+        }
+
+        if(historyPasswordConfirm) {
+            historyPasswordConfirm.addEventListener('click', function() {
+                const enteredPassword = historyPasswordInput.value;
+                if (enteredPassword === "8631184") {
+                    historyDeleteModeActive = true;
+                    enableHistoryDeleteModeButton.textContent = '退出紀錄刪除';
+                    enableHistoryDeleteModeButton.classList.remove('bg-orange-500', 'hover:bg-orange-600');
+                    enableHistoryDeleteModeButton.classList.add('bg-red-600', 'hover:bg-red-700');
+                    historyPasswordSection.classList.add('hidden');
+                    showMessage("紀錄刪除模式已啟用。", "warning");
+                    renderFilteredHistory(); 
+                } else {
+                    showMessage("密碼錯誤！", "error");
+                    historyPasswordInput.value = '';
+                    historyPasswordInput.focus();
+                }
+            });
+        }
+
+        if(historyPasswordCancel) {
+            historyPasswordCancel.addEventListener('click', function() {
+                historyPasswordSection.classList.add('hidden');
+                historyPasswordInput.value = '';
+            });
+        }
+
+        prevPageButton.addEventListener('click', () => { if (currentPage > 1) displayPage(currentPage - 1); });
+        nextPageButton.addEventListener('click', () => { if (currentPage < totalPages) displayPage(currentPage + 1); });
+        document.addEventListener('DOMContentLoaded', initializeSystem);
+    </script>
+</body>
+</html>
