@@ -1,5 +1,5 @@
 // Service Worker 版本，當您更新 PWA 檔案時，應更改此版本號以觸發更新
-const CACHE_NAME = 'roll-call-localstorage-cache-v1.2'; // 您可以根據需要更新版本號
+const CACHE_NAME = 'roll-call-localstorage-cache-v1.1'; // 您可以根據需要更新版本號
 // 需要快取的檔案列表
 const urlsToCache = [
   './', // 快取根目錄，通常對應 index.html
