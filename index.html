@@ -105,7 +105,10 @@
                         <input type="text" id="historyNameFilter" placeholder="輸入姓名關鍵字" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
                 </div>
-                <button id="clearHistoryFiltersButton" class="mt-3 w-full sm:w-auto bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-sm">清除篩選</button>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <button id="clearHistoryFiltersButton" class="flex-grow sm:flex-grow-0 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-2 px-4 rounded-lg shadow-sm">清除篩選</button>
+                    <button id="downloadHistoryButton" class="flex-grow sm:flex-grow-0 bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow-sm">下載為 Excel (CSV) 檔</button>
+                </div>
             </div>
             <div id="historyRecordsContainer" class="space-y-4">
                 <p class="text-gray-500 text-center">正在載入歷史紀錄...</p>
@@ -114,10 +117,15 @@
     </div>
 
     <script type="module">
-        // 移除了 Firebase SDK imports
+        let names = []; 
 
-        let names = [];
-        const textFileData = `
+        function loadNames() {
+            const savedNames = localStorage.getItem('rollCallNameList');
+            if (savedNames && savedNames.length > 0) {
+                names = JSON.parse(savedNames);
+                console.log("從 localStorage 載入名單。");
+            } else {
+                const textFileData = `
 鄧明輝
 吳麗妁
 鄧佳欣
@@ -295,11 +303,24 @@
 蔡沁驛
 張採築
 `.trim();
-        function parseTextFile(textString) { return textString.split('\n').map(line => line.trim()).filter(line => line); }
-        names = parseTextFile(textFileData);
+                names = textFileData.split('\n').map(line => line.trim()).filter(line => line);
+                localStorage.setItem('rollCallNameList', JSON.stringify(names));
+                console.log("使用預設名單並存入 localStorage。");
+            }
+        }
+
+        function saveNamesToLocalStorage() {
+            try {
+                localStorage.setItem('rollCallNameList', JSON.stringify(names));
+                console.log("名單已更新至 localStorage。");
+            } catch (e) {
+                showMessage("儲存名單失敗，可能已達儲存上限。", "error");
+                console.error("Error saving name list to localStorage:", e);
+            }
+        }
 
         const nameButtonsContainer = document.getElementById('nameButtonsContainer');
-        const saveRecordButton = document.getElementById('saveRecordButton'); // 改名
+        const saveRecordButton = document.getElementById('saveRecordButton'); 
         const viewHistoryButton = document.getElementById('viewHistoryButton');
         const countDisplay = document.getElementById('countDisplay');
         const messageBox = document.getElementById('messageBox');
@@ -321,14 +342,12 @@
         const historyPasswordInput = document.getElementById('historyPasswordInput');
         const historyPasswordConfirm = document.getElementById('historyPasswordConfirm');
         const historyPasswordCancel = document.getElementById('historyPasswordCancel');
+        const downloadHistoryButton = document.getElementById('downloadHistoryButton'); // 新增下載按鈕變數
+
 
         let pressedCount = 0, totalNames = names.length, nameStates = {}, itemsPerPage = 28, currentPage = 1, totalPages = Math.ceil(totalNames / itemsPerPage) || 1, deleteMode = false;
         let allHistoryRecords = []; 
         let historyDeleteModeActive = false; 
-
-        // Firebase 相關按鈕現在預設可用，因為不再依賴 Firebase 初始化
-        // if (saveRecordButton) saveRecordButton.disabled = true; 
-        // if (viewHistoryButton) viewHistoryButton.disabled = true;
 
         function initializeNameStates() {
             const newNameStates = {};
@@ -409,7 +428,9 @@
         function handleAddName() {
             const newName = newNameInput.value.trim();
             if (!newName) { showMessage("請輸入姓名！", "error"); return; }
-            names.push(newName); newNameInput.value = '';
+            names.push(newName);
+            saveNamesToLocalStorage();
+            newNameInput.value = '';
             currentPage = Math.ceil(names.length / itemsPerPage); 
             updateSystemState(); showMessage(`"${newName}" 已成功新增！`, "success");
         }
@@ -417,7 +438,9 @@
         function handleDeleteName(nameToDelete) {
             const idx = names.indexOf(nameToDelete);
             if (idx > -1) {
-                names.splice(idx, 1); if (nameStates[nameToDelete]) pressedCount--; delete nameStates[nameToDelete];
+                names.splice(idx, 1);
+                saveNamesToLocalStorage();
+                if (nameStates[nameToDelete]) pressedCount--; delete nameStates[nameToDelete];
                 updateSystemState(); showMessage(`"${nameToDelete}" 已刪除。`, "success");
             }
         }
@@ -427,8 +450,8 @@
             
             const presentNamesList = names.filter(name => nameStates[name]);
             const newRecord = {
-                id: Date.now().toString(), // 使用時間戳作為唯一ID
-                timestamp: new Date().toISOString(), // ISO 格式時間戳
+                id: Date.now().toString(), 
+                timestamp: new Date().toISOString(), 
                 dateString: currentDateDisplay.textContent,
                 totalPresent: pressedCount,
                 totalNamesInList: totalNames,
@@ -437,7 +460,7 @@
 
             try {
                 let history = JSON.parse(localStorage.getItem('rollCallHistory')) || [];
-                history.unshift(newRecord); // 新紀錄加到最前面
+                history.unshift(newRecord); 
                 localStorage.setItem('rollCallHistory', JSON.stringify(history));
                 
                 showMessage("紀錄已儲存到瀏覽器！", "success"); 
@@ -476,207 +499,10 @@
                 localStorage.setItem('rollCallHistory', JSON.stringify(history));
                 
                 showMessage("歷史紀錄已成功刪除。", "success");
-                allHistoryRecords = history; // 更新本地緩存
+                allHistoryRecords = history; 
                 renderFilteredHistory();
             } catch (e) {
                 console.error("Error deleting history record from localStorage: ", e);
                 showMessage("刪除歷史紀錄失敗：" + e.message, "error");
             }
-        }
-
-        function renderFilteredHistory() {
-            const filterDate = historyDateFilter.value; 
-            const filterName = historyNameFilter.value.trim().toLowerCase();
-            
-            let filteredRecords = allHistoryRecords; // 使用從 localStorage 載入的 allHistoryRecords
-
-            if (filterDate) {
-                filteredRecords = filteredRecords.filter(record => {
-                    const recordIsoDate = convertChineseDateToISO(record.dateString); 
-                    return recordIsoDate === filterDate;
-                });
-            }
-
-            if (filterName) {
-                filteredRecords = filteredRecords.filter(record => {
-                    const presentNamesArray = JSON.parse(record.presentNames || "[]"); 
-                    return presentNamesArray.some(name => name.toLowerCase().includes(filterName));
-                });
-            }
-
-            if (filteredRecords.length === 0) {
-                historyRecordsContainer.innerHTML = '<p class="text-gray-500 text-center">沒有符合篩選條件的紀錄。</p>';
-                return;
-            }
-
-            let recordsHtml = '';
-            filteredRecords.forEach((record) => { 
-                const presentNamesArray = JSON.parse(record.presentNames || "[]");
-                let namesListHtml = presentNamesArray.length > 0 ? presentNamesArray.map(name => `<li class="text-sm text-gray-600">${name}</li>`).join('') : '<li>無人點名</li>';
-                
-                let deleteButtonHtml = '';
-                if (historyDeleteModeActive) { 
-                    deleteButtonHtml = `<button class="delete-history-btn ml-2" data-record-id="${record.id}">刪除此紀錄</button>`;
-                }
-
-                recordsHtml += `
-                    <div class="border-b border-gray-200 pb-3 mb-3">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <p class="font-semibold text-gray-700">日期：${record.dateString}</p>
-                                <p class="text-sm text-gray-600">點名人數：${record.totalPresent} / ${record.totalNamesInList}</p>
-                            </div>
-                            ${deleteButtonHtml} 
-                        </div>
-                        <details class="mt-1">
-                            <summary class="cursor-pointer text-blue-600 hover:text-blue-800 text-sm">查看名單</summary>
-                            <ul class="list-disc list-inside pl-5 mt-1">${namesListHtml}</ul>
-                        </details>
-                    </div>`;
-            });
-            historyRecordsContainer.innerHTML = recordsHtml;
-
-            if (historyDeleteModeActive) { 
-                historyRecordsContainer.querySelectorAll('.delete-history-btn').forEach(button => {
-                    button.addEventListener('click', function() {
-                        const recordId = this.dataset.recordId;
-                        deleteHistoryRecordFromLocalStorage(recordId);
-                    });
-                });
-            }
-        }
-
-        function loadHistoryFromLocalStorage() { 
-            historyRecordsContainer.innerHTML = '<p class="text-gray-500 text-center">正在載入歷史紀錄...</p>';
-            try {
-                const history = JSON.parse(localStorage.getItem('rollCallHistory')) || [];
-                // localStorage 中的紀錄可能沒有按時間戳排序，如果需要，可以在這裡排序
-                // 不過由於我們儲存時是 unshift，理論上較新的會在前面
-                allHistoryRecords = history; 
-                renderFilteredHistory(); 
-            } catch (e) {
-                console.error("Error loading history from localStorage: ", e);
-                historyRecordsContainer.innerHTML = `<p class="text-red-500 text-center">讀取歷史紀錄失敗：${e.message}</p>`;
-                allHistoryRecords = []; 
-            }
-        }
-
-        function initializeSystem() {
-            updateDateDisplay(); totalNames = names.length;
-            totalPages = Math.ceil(totalNames / itemsPerPage) || 1;
-            initializeNameStates(); displayPage(1); updateCountDisplay();
-        }
-
-        addNameButton.addEventListener('click', handleAddName);
-        newNameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleAddName(); });
-        toggleDeleteModeButton.addEventListener('click', function() {
-            deleteMode = !deleteMode; this.textContent = deleteMode ? "退出刪除模式" : "切換刪除模式";
-            this.classList.toggle('bg-yellow-500', !deleteMode); this.classList.toggle('hover:bg-yellow-600', !deleteMode);
-            this.classList.toggle('bg-purple-500', deleteMode); this.classList.toggle('hover:bg-purple-600', deleteMode);
-            displayPage(currentPage); showMessage(deleteMode ? "刪除模式已啟用" : "刪除模式已關閉", "warning");
-        });
-        
-        // 將 saveToDbButton 改為 saveRecordButton
-        if (saveRecordButton) saveRecordButton.addEventListener('click', saveRecordToLocalStorage);
-        
-        if (viewHistoryButton) {
-            viewHistoryButton.addEventListener('click', () => {
-                historyModal.classList.remove('hidden', 'opacity-0');
-                historyModal.querySelector('.modal-content').classList.remove('scale-95');
-                historyModal.classList.add('opacity-100');
-                historyModal.querySelector('.modal-content').classList.add('scale-100');
-                historyDateFilter.value = '';
-                historyNameFilter.value = '';
-                if (historyDeleteModeActive) { 
-                    historyDeleteModeActive = false;
-                    enableHistoryDeleteModeButton.textContent = '啟用紀錄刪除';
-                    enableHistoryDeleteModeButton.classList.remove('bg-red-600', 'hover:bg-red-700');
-                    enableHistoryDeleteModeButton.classList.add('bg-orange-500', 'hover:bg-orange-600');
-                }
-                historyPasswordSection.classList.add('hidden'); 
-                loadHistoryFromLocalStorage(); 
-            });
-        }
-        if (closeHistoryModalButton) {
-            closeHistoryModalButton.addEventListener('click', () => {
-                historyModal.classList.add('opacity-0');
-                historyModal.querySelector('.modal-content').classList.add('scale-95');
-                if (historyDeleteModeActive) { 
-                    historyDeleteModeActive = false;
-                    enableHistoryDeleteModeButton.textContent = '啟用紀錄刪除';
-                    enableHistoryDeleteModeButton.classList.remove('bg-red-600', 'hover:bg-red-700');
-                    enableHistoryDeleteModeButton.classList.add('bg-orange-500', 'hover:bg-orange-600');
-                }
-                historyPasswordSection.classList.add('hidden'); 
-                setTimeout(() => {
-                    historyModal.classList.add('hidden');
-                    historyModal.querySelector('.modal-content').classList.remove('scale-100'); 
-                }, 250); 
-            });
-        }
-        window.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' && !historyModal.classList.contains('hidden')) {
-                closeHistoryModalButton.click();
-            }
-        });
-
-        if (historyDateFilter) historyDateFilter.addEventListener('input', renderFilteredHistory);
-        if (historyNameFilter) historyNameFilter.addEventListener('input', renderFilteredHistory);
-        if (clearHistoryFiltersButton) {
-            clearHistoryFiltersButton.addEventListener('click', () => {
-                historyDateFilter.value = '';
-                historyNameFilter.value = '';
-                renderFilteredHistory(); 
-            });
-        }
-
-        if (enableHistoryDeleteModeButton) {
-            enableHistoryDeleteModeButton.addEventListener('click', function() {
-                if (historyDeleteModeActive) { 
-                    historyDeleteModeActive = false;
-                    this.textContent = '啟用紀錄刪除';
-                    this.classList.remove('bg-red-600', 'hover:bg-red-700');
-                    this.classList.add('bg-orange-500', 'hover:bg-orange-600');
-                    historyPasswordSection.classList.add('hidden'); 
-                    showMessage("已退出紀錄刪除模式。", "info");
-                } else { 
-                    historyPasswordSection.classList.remove('hidden');
-                    historyPasswordInput.value = '';
-                    historyPasswordInput.focus();
-                }
-                renderFilteredHistory(); 
-            });
-        }
-
-        if(historyPasswordConfirm) {
-            historyPasswordConfirm.addEventListener('click', function() {
-                const enteredPassword = historyPasswordInput.value;
-                if (enteredPassword === "8631184") {
-                    historyDeleteModeActive = true;
-                    enableHistoryDeleteModeButton.textContent = '退出紀錄刪除';
-                    enableHistoryDeleteModeButton.classList.remove('bg-orange-500', 'hover:bg-orange-600');
-                    enableHistoryDeleteModeButton.classList.add('bg-red-600', 'hover:bg-red-700');
-                    historyPasswordSection.classList.add('hidden');
-                    showMessage("紀錄刪除模式已啟用。", "warning");
-                    renderFilteredHistory(); 
-                } else {
-                    showMessage("密碼錯誤！", "error");
-                    historyPasswordInput.value = '';
-                    historyPasswordInput.focus();
-                }
-            });
-        }
-
-        if(historyPasswordCancel) {
-            historyPasswordCancel.addEventListener('click', function() {
-                historyPasswordSection.classList.add('hidden');
-                historyPasswordInput.value = '';
-            });
-        }
-
-        prevPageButton.addEventListener('click', () => { if (currentPage > 1) displayPage(currentPage - 1); });
-        nextPageButton.addEventListener('click', () => { if (currentPage < totalPages) displayPage(currentPage + 1); });
-        document.addEventListener('DOMContentLoaded', initializeSystem);
-    </script>
-</body>
-</html>
+ 
